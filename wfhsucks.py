@@ -8,7 +8,6 @@ import datetime # convert date time format for easy reading
 import time # batch finish/unfinish
 import sys # args
 import re # parse html into plaintext
-from pprint import pprint # vardump
 
 url = "http://binusmaya.binus.ac.id"
 frontpath = "/services/ci/index.php/forum/"
@@ -45,37 +44,6 @@ class Thread(object):
         if hold:
             getchar()
 
-def pretty_print_POST(path, payload):
-    # At this point it is completely built and ready
-    # to be fired; it is "prepared".
-
-    # However pay attention at the formatting used in 
-    # this function because it is programmed to be pretty 
-    # printed and may differ from the actual request.
-    
-    # https://stackoverflow.com/questions/20658572/python-requests-print-entire-http-request-raw
-    req = requests.Request('POST',url+path,headers=headers,data=payload).prepare()
-    print('{}\n{}\r\n{}\r\n\r\n{}\n{}\n'.format(
-        '-----------START-----------',
-        req.method + ' ' + req.url,
-        '\r\n'.join('{}: {}'.format(k, v) for k, v in req.headers.items()),
-        req.body,
-        '------------END------------'
-    ))
-def send(path, payload):
-    # pretty_print_POST(path, payload)
-    r = requests.post(url+path, headers=headers, cookies=cookies, data=payload)
-    if r.status_code != 200:
-        print "Error HTTP "+str(r.status_code)
-        exit()
-
-    jdata = r.json()
-    # print('-----------START-----------')
-    # print json.dumps(jdata, indent=4)
-    # print('------------END------------')
-
-    return jdata
-
 def savep(obj, filename):
     f = open(filename, "w")
     pickle.dump(obj, f)
@@ -84,6 +52,15 @@ def loadp(filename):
     f = open(filename, "r")
     return pickle.load(f)
 
+def send(path, payload):
+    r = requests.post(url+path, headers=headers, cookies=cookies, data=payload)
+    if r.status_code != 200:
+        print "Error HTTP "+str(r.status_code)
+        exit()
+
+    jdata = r.json()
+
+    return jdata
 def getforum():
     global forum
 
