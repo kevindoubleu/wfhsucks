@@ -528,7 +528,7 @@ def main():
             print " not having to deal with bimay's loading speed"
             print "using it alone feels like a waste tho, so here ya go, hope it helps"
             print "stay safe"
-            print "any improvements are welcome at "
+            print "any improvements are welcome at https://github.com/kevindoubleu/wfhsucks"
             getchar()
         elif choice == 9:
             fixissues()
