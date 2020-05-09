@@ -55,7 +55,12 @@ def loadp(filename):
 def send(path, payload):
     r = requests.post(url+path, headers=headers, cookies=cookies, data=payload)
     if r.status_code != 200:
-        print "Error HTTP "+str(r.status_code)
+        print "[!] Error HTTP "+str(r.status_code)
+        print r.text
+        print path
+        print payload
+        if r.status_code == 500:
+            print "[*] It's an HTTP 500 error, bimay's acting up, pls try again later"
         exit()
 
     jdata = r.json()
@@ -64,11 +69,7 @@ def send(path, payload):
 def getforum():
     global forum
 
-    existingthreads = []
-    for t in forum:
-        existingthreads.append(t.threadid)
     count = 0
-
     courses = getcourses()
     for course in courses:
         classes = getclasses(course)
@@ -77,23 +78,24 @@ def getforum():
             threads = getthreads(course, kelas)
 
             for thread in threads:
-                thread = Thread(
-                    course['Caption'].encode("utf-8")[11:],
-                    str(course['ID']).encode("utf-8"),
-                    kelas['Caption'].encode("utf-8"),
-                    str(kelas['ID']).encode("utf-8"),
-                    urllib.unquote(thread['ForumThreadTitle'].encode("utf-8", 'ignore')),
-                    str(thread['ID']).encode("utf-8"),
-                    str(thread['replies']).encode("utf-8"),
-                    getthreaddate(thread).encode("utf-8"),
-                    getthreadcontent(thread).encode("utf-8")
-                )
-
-                if thread.threadid not in existingthreads:
-                    print "[+] New thread: "+thread.threadcaption
+                if thread['ID'] not in [t.threadid for t in forum]:
+                    t = Thread(
+                        course['Caption'].encode("utf-8")[11:],
+                        str(course['ID']).encode("utf-8"),
+                        kelas['Caption'].encode("utf-8"),
+                        str(kelas['ID']).encode("utf-8"),
+                        urllib.unquote(thread['ForumThreadTitle'].encode("utf-8", 'ignore')),
+                        str(thread['ID']).encode("utf-8"),
+                        str(thread['replies']).encode("utf-8"),
+                        getthreaddate(thread).encode("utf-8"),
+                        getthreadcontent(thread).encode("utf-8")
+                    )
+                    print "[+] New thread: "+t.threadcaption
                     count += 1
-                    forum.append(thread)
+                    forum.append(t)
     print "[!] Done, %d new threads have been added" % count
+    getchar()
+    print "[*] If problems occur, delete 'forumdata' file first and check if phpsessid already expired"
     getchar()
 def getcourses():
     path = frontpath+"getCourse"
@@ -484,11 +486,9 @@ def main():
         print "[+] Initiating forum data, first time run only"
         try:
             getforum()
-            print "[*] If problems occur, delete 'forumdata' file first and check if phpsessid already expired"
         except:
             print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
             exit()
-        getchar()
     
     choice = 0
     while True:
