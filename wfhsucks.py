@@ -10,7 +10,7 @@ import sys # args
 import re # parse html into plaintext
 
 url = "http://binusmaya.binus.ac.id"
-frontpath = "/services/ci/index.php/forum/"
+forumpath = "/services/ci/index.php/forum/"
 
 acadyear = "1920"
 headers = {
@@ -26,7 +26,8 @@ forum = []
 class Thread(object):
     "blueprint for 1 forum entry"
 
-    def __init__(self, coursecaption, courseid, classcaption, classid, threadcaption, threadid, threadreplies, threaddate, threadcontent):
+    def __init__(self, coursecode, coursecaption, courseid, classcaption, classid, threadcaption, threadid, threadreplies, threaddate, threadcontent):
+        self.coursecode = coursecode
         self.coursecaption = coursecaption
         self.courseid = courseid
         self.classcaption = classcaption
@@ -43,6 +44,40 @@ class Thread(object):
         print "[!] %s is now %s" % (self.threadcaption, 'Finished' if self.done else 'Unfinished')
         if hold:
             getchar()
+    
+    def getlink(self):
+        print "\n----- Link -----"
+        print self.coursecaption+" - "+self.classcaption+" - "+self.threadcaption
+        print "https://binusmaya.binus.ac.id/newStudent/#/forum/reader."+self.threadid
+        print "----- Link -----\n"
+        getchar()
+
+    def getcontent(self):
+        print "\n----- Content -----"
+        print self.coursecaption+" - "+self.classcaption+" - "+self.threadcaption
+        print self.threadcontent
+        print "----- Content -----\n"
+        getchar()
+vidconfs = []
+class Vidconf(object):
+    "blueprint for 1 vidconf meeting"
+
+    def __init__(self, coursecaption, week, session, date, time, meetnbr, pw, link):
+        self.coursecaption = coursecaption
+        self.week = week
+        self.session = session
+        self.date = date
+        self.time = time
+        self.meetnbr = meetnbr
+        self.pw = pw
+        self.link = link
+
+    def getlink(self):
+        print "\n----- Link -----"
+        print self.coursecaption+" - Week "+self.week+" ("+self.date+" at "+self.time+")"
+        print self.link
+        print "----- Link -----\n"
+        getchar()
 
 def savep(obj, filename):
     f = open(filename, "w")
@@ -63,9 +98,12 @@ def send(path, payload):
             print "[*] It's an HTTP 500 error, bimay's acting up, pls try again later"
         exit()
 
-    jdata = r.json()
+    try:
+        jdata = r.json()
+        return jdata
+    except:
+        return r.text
 
-    return jdata
 def getforum():
     global forum
 
@@ -80,6 +118,7 @@ def getforum():
             for thread in threads:
                 if thread['ID'] not in [t.threadid for t in forum]:
                     t = Thread(
+                        course['Caption'].encode("utf-8")[:8],
                         course['Caption'].encode("utf-8")[11:],
                         str(course['ID']).encode("utf-8"),
                         kelas['Caption'].encode("utf-8"),
@@ -95,31 +134,31 @@ def getforum():
                     forum.append(t)
     print "[!] Done, %d new threads have been added" % count
     getchar()
-    print "[*] If problems occur, delete 'forumdata' file first and check if phpsessid already expired"
+    print "[*] If problems occur, delete 'forum%s.data' file first and check if phpsessid already expired" % acadyear
     getchar()
 def getcourses():
-    path = frontpath+"getCourse"
+    path = forumpath+"getCourse"
     payload = '{"acadCareer":"RS1","period":"%s","Institution":"BNS01"}' % acadyear
     courses = send(path, payload)['rows']
     courses = json.loads(courses)
 
     return courses
 def getclasses(course):
-    path = frontpath+"getClass"
+    path = forumpath+"getClass"
     payload = '{"acadCareer":"RS1","period":"%s","course":"%s","Institution":"BNS01"}' % (acadyear, course['ID'])
     classes = send(path, payload)['rows']
     classes = json.loads(classes)
 
     return classes
 def getthreads(course, kelas):
-    path = frontpath+"getThread"
+    path = forumpath+"getThread"
     payload = '{"forumtypeid":1,"acadCareer":"RS1","period":"%s","course":"%s","classid":"%s","topic":"","Institution":"BNS01","SESSIONIDNUM":""}' % (acadyear, course['ID'], kelas['ID'])
     threads = send(path, payload)['rows']
     threads = json.loads(threads)
 
     return threads
 def getthreaddate(thread):
-    path = frontpath+"getReply"
+    path = forumpath+"getReply"
     payload = '{"threadid":"%s"}' % thread['ID']
     replies = send(path, payload)['rows']
     replies = json.loads(replies)
@@ -127,7 +166,7 @@ def getthreaddate(thread):
 
     return postdate
 def getthreadcontent(thread):
-    path = frontpath+"getReply"
+    path = forumpath+"getReply"
     payload = '{"threadid":"%s"}' % thread['ID']
     replies = send(path, payload)['rows']
     replies = json.loads(replies)
@@ -136,6 +175,103 @@ def getthreadcontent(thread):
     content = re.sub('<[^<]+?>', '', content)
 
     return content
+
+def getvidconfs():
+    global vidconfs
+
+    courseids = []
+    coursethreadsamples = []
+    for t in forum:
+        if t.courseid not in courseids:
+            courseids.append(t.courseid)
+            coursethreadsamples.append(t)
+
+    count = 0
+    for c in coursethreadsamples:
+        print "[*] Checking "+c.coursecaption
+        path = "/services/ci/index.php/student/classes/nextClass/%s/%s" % (acadyear, c.courseid)
+        classnbr = send(path, "")[0]['CLASS_NBR']
+        vc = getcoursevc(c, classnbr)
+        if not vc:
+            continue
+        
+        if vc.meetnbr not in [v.meetnbr for v in vidconfs]:
+            print "[+] New upcoming vidconf: "+vc.coursecaption+" - Week "+vc.week+" ("+vc.date+" at "+vc.time+")"
+            count += 1
+            vidconfs.append(vc)
+    print "[!] Done, %d new vidconfs have been added" % count
+    getchar()
+    print "[*] If problems occur, delete 'vidconf%s.data' file first and check if phpsessid already expired" % acadyear
+    getchar()
+def getcoursevc(course, classnbr):
+    path = "/services/ci/index.php/BlendedLearning/VideoConference/getList/%s/%s/%s/%s" % (course.coursecode, course.courseid, acadyear, classnbr)
+    htmltbl = send(path, "")
+
+    if "No Data Available" in htmltbl:
+        return
+
+    start = 0
+    vidconfdata = []
+    while htmltbl.find("</td>", start) != -1:
+        end = htmltbl.find("</td>", start)
+        vidconfdata.append(htmltbl[htmltbl.find("<td>", start)+4:end])
+        start = end+1
+    
+    vc = Vidconf(
+        course.coursecaption,
+        vidconfdata[1], 
+        vidconfdata[2], 
+        vidconfdata[3], 
+        vidconfdata[4], 
+        vidconfdata[5], 
+        vidconfdata[6], 
+        vidconfdata[7][vidconfdata[7].find("https://binus.zoom.us/"):vidconfdata[7].find("\"></span>")]
+    )
+
+    return vc
+def pallvc():
+    len1 = maxcolumnlen("coursecaption", vidconfs)
+    len2 = len("week")
+    len3 = len("session")
+    len4 = maxcolumnlen("date", vidconfs)
+    len5 = maxcolumnlen("time", vidconfs)
+    len6 = len(max([v.meetnbr for v in vidconfs], key=len))
+    len7 = len("password")
+    lenarr = [3, len1,len2,len3,len4,len5,len6,len7]
+
+    tblline([i+2 for i in lenarr])
+    tblcontent(
+        ['No', 'Course', 'Week', 'Session', 'Date', 'Time', 'Meeting No', 'Password'],
+        lenarr, "cccccccc"
+    )
+    tblline([i+2 for i in lenarr])
+
+    i = 0
+    for v in vidconfs:
+        tblcontent(
+            [i+1, v.coursecaption, v.week, v.session, v.date, v.time, v.meetnbr, v.pw],
+            lenarr, "rlrrrrrr"
+        )
+        i += 1
+    tblline([i+2 for i in lenarr])
+
+def vcmenu():
+    choice = 0
+    while True:
+        pallvc()
+        print "1. Get link"
+        # print "2. Delete finished vidconfs"
+        print "0. Back"
+
+        choice = justinput(">> ")
+        if choice == 0:
+            break
+        elif choice == 1:
+            idx = justinput("Select vidconf to get link from: ")
+            try:
+                vidconfs[idx-1].getlink()
+            except:
+                return
 
 def sort(key, rev):
     global forum
@@ -175,7 +311,7 @@ def choosegeneralmenu(choice, thread):
     if choice == 1:
         idx = justinput("Select thread to get link from: ")
         try:
-            getlink(thread[idx-1])
+            thread[idx-1].getlink()
         except:
             return
     elif choice == 2:
@@ -187,7 +323,7 @@ def choosegeneralmenu(choice, thread):
     elif choice == 3:
         idx = justinput("Select thread to preview: ")
         try:
-            getcontent(thread[idx-1])
+            thread[idx-1].getcontent()
         except:
             return
 
@@ -397,14 +533,6 @@ def getcoursenames():
             coursenames.append(t.coursecaption)
 
     return coursenames
-def getlink(thread):
-    print thread.coursecaption+" - "+thread.classcaption+" - "+thread.threadcaption
-    print "https://binusmaya.binus.ac.id/newStudent/#/forum/reader."+thread.threadid
-    getchar()
-def getcontent(thread):
-    print thread.coursecaption+" - "+thread.classcaption+" - "+thread.threadcaption
-    print thread.threadcontent
-    getchar()
 
 def maxcolumnlen(col, arr=None):
     data = []
@@ -422,7 +550,7 @@ def tblline(widths):
     print line
 def tblcontent(contents, widths, alignment):
     if len(contents) != len(widths):
-        print "[!] Table printing error"
+        raise Exception("Table content and widths contain different number of columns")
         return
     line = "|"
     for i in range(len(contents)):
@@ -438,7 +566,9 @@ def getchar():
     print "Enter to continue"
     try:
         input()
+        print ""
     except:
+        print ""
         return
 def justinput(prompt):
     while True:
@@ -481,7 +611,7 @@ def main():
 
     try:
         global forum
-        forum = loadp("forumdata%s" % acadyear)
+        forum = loadp("forum%s.data" % acadyear)
     except:
         print "[+] Initiating forum data, first time run only"
         try:
@@ -489,21 +619,38 @@ def main():
         except:
             print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
             exit()
-    
+    try:
+        global vidconfs
+        vidconfs = loadp("vidconf%s.data" % acadyear)
+    except:
+        print "[+] Initiating vidconf data (needs forum data), first time run only"
+        try:
+            getvidconfs()
+        except:
+            print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
+            exit()
+
     choice = 0
     while True:
         poverview()
         print "wfhsucks main menu"
+        print "Forum"
+        # print "    Forum"
         print "1. Check for new threads"
         print "2. Print all unfinished threads"
         print "3. Print threads from a course"
         print "4. Print threads from all courses"
         print "5. Batch finish/unfinish"
         print "6. Sort table"
-        print "8. Help"
+        print "Video Conference"
+        print "7. Check for new upcoming video conferences"
+        print "8. Print all upcoming video conferences"
+        print "Others"
         print "9. Quick fix table printing issues"
+        print "10. Help"
         print "0. Exit"
-        savep(forum, "forumdata%s" % acadyear)
+        savep(forum, "forum%s.data" % acadyear)
+        savep(vidconfs, "vidconf%s.data" % acadyear)
 
         choice = justinput(">> ")
         if choice == 0:
@@ -521,7 +668,13 @@ def main():
             batchmenu()
         elif choice == 6:
             sortmenu()
+        elif choice == 7:
+            getvidconfs()
         elif choice == 8:
+            vcmenu()
+        elif choice == 9:
+            fixissues()
+        elif choice == 10:
             print "wfhsucks if a \"program\" i made to help me deal with stuff like"
             print " checking all forum for new threads easily"
             print " making sure i finish all my forum assignments"
@@ -530,8 +683,6 @@ def main():
             print "stay safe"
             print "any improvements are welcome at https://github.com/kevindoubleu/wfhsucks"
             getchar()
-        elif choice == 9:
-            fixissues()
 
 if __name__ == "__main__":
     main()
