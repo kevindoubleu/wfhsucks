@@ -9,6 +9,11 @@ import time # batch finish/unfinish
 import sys # args
 import re # parse html into plaintext
 
+import wsclasses
+import wsutils
+import wsprinter
+import wsmenu
+
 url = "http://binusmaya.binus.ac.id"
 forumpath = "/services/ci/index.php/forum/"
 
@@ -23,61 +28,24 @@ cookies = {
 }
 
 forum = []
-class Thread(object):
-    "blueprint for 1 forum entry"
-
-    def __init__(self, coursecode, coursecaption, courseid, classcaption, classid, threadcaption, threadid, threadreplies, threaddate, threadcontent):
-        self.coursecode = coursecode
-        self.coursecaption = coursecaption
-        self.courseid = courseid
-        self.classcaption = classcaption
-        self.classid = classid
-        self.threadcaption = threadcaption
-        self.threadid = threadid
-        self.threadreplies = threadreplies
-        self.threaddate = threaddate
-        self.threadcontent = threadcontent
-        self.done = False
-
-    def finish(self, hold=True):
-        self.done = not self.done
-        print "[!] %s is now %s" % (self.threadcaption, 'Finished' if self.done else 'Unfinished')
-        if hold:
-            getchar()
-    
-    def getlink(self):
-        print "\n----- Link -----"
-        print self.coursecaption+" - "+self.classcaption+" - "+self.threadcaption
-        print "https://binusmaya.binus.ac.id/newStudent/#/forum/reader."+self.threadid
-        print "----- Link -----\n"
-        getchar()
-
-    def getcontent(self):
-        print "\n----- Content -----"
-        print self.coursecaption+" - "+self.classcaption+" - "+self.threadcaption
-        print self.threadcontent
-        print "----- Content -----\n"
-        getchar()
 vidconfs = []
-class Vidconf(object):
-    "blueprint for 1 vidconf meeting"
 
-    def __init__(self, coursecaption, week, session, date, time, meetnbr, pw, link):
-        self.coursecaption = coursecaption
-        self.week = week
-        self.session = session
-        self.date = date
-        self.time = time
-        self.meetnbr = meetnbr
-        self.pw = pw
-        self.link = link
-
-    def getlink(self):
-        print "\n----- Link -----"
-        print self.coursecaption+" - Week "+self.week+" ("+self.date+" at "+self.time+")"
-        print self.link
-        print "----- Link -----\n"
-        getchar()
+strings = {
+    "menus": [
+        "Get link",
+        "Finish/unfinish a thread",
+        "Preview a thread",
+    ],
+    "prompts": [
+        "Select thread to get link from: ",
+        "Select thread to finish/unfinish: ",
+        "Select thread to preview: ",
+        "Select course number to show threads from: ",
+        "Select vidconf to get link from: ",
+        "Input date1 (format is DD/MM/YYYY, example 30/12/2020): ",
+        "Input date2 (format is DD/MM/YYYY, example 30/12/2020): "
+    ]
+}
 
 def savep(obj, filename):
     f = open(filename, "w")
@@ -88,7 +56,8 @@ def loadp(filename):
     return pickle.load(f)
 
 def send(path, payload):
-    r = requests.post(url+path, headers=headers, cookies=cookies, data=payload)
+    r = requests.post(url+path, headers=headers, cookies=cookies, data=payload, verify=True)
+    
     if r.status_code != 200:
         print "[!] Error HTTP "+str(r.status_code)
         print r.text
@@ -117,7 +86,7 @@ def getforum():
 
             for thread in threads:
                 if thread['ID'] not in [t.threadid for t in forum]:
-                    t = Thread(
+                    t = wsclasses.ForumThread(
                         course['Caption'].encode("utf-8")[:8],
                         course['Caption'].encode("utf-8")[11:],
                         str(course['ID']).encode("utf-8"),
@@ -133,9 +102,9 @@ def getforum():
                     count += 1
                     forum.append(t)
     print "[!] Done, %d new threads have been added" % count
-    getchar()
+    wsutils.getchar()
     print "[*] If problems occur, delete 'forum%s.data' file first and check if phpsessid already expired" % acadyear
-    getchar()
+    wsutils.getchar()
 def getcourses():
     path = forumpath+"getCourse"
     payload = '{"acadCareer":"RS1","period":"%s","Institution":"BNS01"}' % acadyear
@@ -170,7 +139,7 @@ def getthreadcontent(thread):
     payload = '{"threadid":"%s"}' % thread['ID']
     replies = send(path, payload)['rows']
     replies = json.loads(replies)
-    content = replies[0]['Name']+"\n"+replies[0]['PostContent']
+    content = replies[0]['Name']+"\n\n"+replies[0]['PostContent']
     content = "\n".join(content.splitlines())
     content = re.sub('<[^<]+?>', '', content)
 
@@ -179,31 +148,37 @@ def getthreadcontent(thread):
 def getvidconfs():
     global vidconfs
 
-    courseids = []
+    classes = []
     coursethreadsamples = []
     for t in forum:
-        if t.courseid not in courseids:
-            courseids.append(t.courseid)
+        if t.courseid+t.classid not in classes:
+            classes.append(t.courseid+t.classid)
             coursethreadsamples.append(t)
 
     count = 0
     for c in coursethreadsamples:
-        print "[*] Checking "+c.coursecaption
+        print "[*] Checking "+c.coursecaption+" - "+c.classcaption
         path = "/services/ci/index.php/student/classes/nextClass/%s/%s" % (acadyear, c.courseid)
-        classnbr = send(path, "")[0]['CLASS_NBR']
-        vc = getcoursevc(c, classnbr)
-        if not vc:
+        try:
+            classnbr = send(path, "")[0]['CLASS_NBR']
+        except:
+            print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
+            return
+
+        vclist = getcoursevclist(c, classnbr)
+        if not vclist:
             continue
         
-        if vc.meetnbr not in [v.meetnbr for v in vidconfs]:
-            print "[+] New upcoming vidconf: "+vc.coursecaption+" - Week "+vc.week+" ("+vc.date+" at "+vc.time+")"
-            count += 1
-            vidconfs.append(vc)
+        for vc in vclist:
+            if vc.meetnbr not in [v.meetnbr for v in vidconfs]:
+                print "[+] New upcoming vidconf: "+vc.coursecaption+" - Week "+vc.week+" ("+vc.date+" at "+vc.time+")"
+                count += 1
+                vidconfs.append(vc)
     print "[!] Done, %d new vidconfs have been added" % count
-    getchar()
+    wsutils.getchar()
     print "[*] If problems occur, delete 'vidconf%s.data' file first and check if phpsessid already expired" % acadyear
-    getchar()
-def getcoursevc(course, classnbr):
+    wsutils.getchar()
+def getcoursevclist(course, classnbr):
     path = "/services/ci/index.php/BlendedLearning/VideoConference/getList/%s/%s/%s/%s" % (course.coursecode, course.courseid, acadyear, classnbr)
     htmltbl = send(path, "")
 
@@ -217,314 +192,178 @@ def getcoursevc(course, classnbr):
         vidconfdata.append(htmltbl[htmltbl.find("<td>", start)+4:end])
         start = end+1
     
-    vc = Vidconf(
-        course.coursecaption,
-        vidconfdata[1], 
-        vidconfdata[2], 
-        vidconfdata[3], 
-        vidconfdata[4], 
-        vidconfdata[5], 
-        vidconfdata[6], 
-        vidconfdata[7][vidconfdata[7].find("https://binus.zoom.us/"):vidconfdata[7].find("\"></span>")]
-    )
-
-    return vc
-def pallvc():
-    len1 = maxcolumnlen("coursecaption", vidconfs)
-    len2 = len("week")
-    len3 = len("session")
-    len4 = maxcolumnlen("date", vidconfs)
-    len5 = maxcolumnlen("time", vidconfs)
-    len6 = len(max([v.meetnbr for v in vidconfs], key=len))
-    len7 = len("password")
-    lenarr = [3, len1,len2,len3,len4,len5,len6,len7]
-
-    tblline([i+2 for i in lenarr])
-    tblcontent(
-        ['No', 'Course', 'Week', 'Session', 'Date', 'Time', 'Meeting No', 'Password'],
-        lenarr, "cccccccc"
-    )
-    tblline([i+2 for i in lenarr])
-
-    i = 0
-    for v in vidconfs:
-        tblcontent(
-            [i+1, v.coursecaption, v.week, v.session, v.date, v.time, v.meetnbr, v.pw],
-            lenarr, "rlrrrrrr"
+    vclist = []
+    while len(vidconfdata):
+        vc = wsclasses.Vidconf(
+            course.coursecaption,
+            vidconfdata[1], 
+            vidconfdata[2], 
+            datetime.datetime.strptime(vidconfdata[3], "%b %d, %Y").strftime("%Y-%m-%d"),
+            vidconfdata[4], 
+            vidconfdata[5], 
+            vidconfdata[6], 
+            vidconfdata[7][vidconfdata[7].find("https://binus.zoom.us/"):vidconfdata[7].find("\"></span>")]
         )
-        i += 1
-    tblline([i+2 for i in lenarr])
+        vclist.append(vc)
+        vidconfdata = vidconfdata[8:]
 
-def vcmenu():
-    choice = 0
-    while True:
-        pallvc()
-        print "1. Get link"
-        # print "2. Delete finished vidconfs"
-        print "0. Back"
+    return vclist
 
-        choice = justinput(">> ")
-        if choice == 0:
-            break
-        elif choice == 1:
-            idx = justinput("Select vidconf to get link from: ")
-            try:
-                vidconfs[idx-1].getlink()
-            except:
-                return
-
-def sort(key, rev):
+def sortforum(key, rev, arr=None):
+    # if arr == None:
     global forum
     if type(getattr(forum[0], key)) is 'str':
         forum.sort(key=lambda x: getattr(x, key).upper(), reverse=rev)
     else:
         forum.sort(key=lambda x: getattr(x, key), reverse=rev)
 def sortmenu():
-    choice = 0
-    order = True
     keys = ['coursecaption', 'classcaption', 'threadcaption', 'threaddate', 'done', 'threadreplies']
-    while True:
-        pall()
-        print "Sort table (%s) by:" % ('Descending' if order else 'Ascending')
-        print "1. Course"
-        print "2. Class"
-        print "3. Thread"
-        print "4. Create date"
-        print "5. Finished/unfinished"
-        print "6. Replies"
-        print "9. Toggle ascending/descending"
-        print "0. Back"
 
-        choice = justinput(">> ")
-        if choice == 0:
-            break
-        elif 1 <= choice and choice <= 6:
-            sort(keys[choice-1], order)
-        elif choice == 9:
-            order = not order
+    wsmenu.menu(
+        [
+            'Course asc', 'Class asc', 'Thread asc', 'Create date asc', 'Finished/unfinished asc', 'Replies asc',
+            'Course dsc', 'Class dsc', 'Thread dsc', 'Create date dsc', 'Finished/unfinished dsc', 'Replies dsc' 
+        ],
+        beforechoices=[
+            lambda: initalltbl().view()
+        ],
+        funcs=[
+            lambda: sortforum('coursecaption', False),
+            lambda: sortforum('classcaption', False),
+            lambda: sortforum('threadcaption', False),
+            lambda: sortforum('threaddate', False),
+            lambda: sortforum('done', False),
+            lambda: sortforum('threadreplies', False),
+            lambda: sortforum('coursecaption', True),
+            lambda: sortforum('classcaption', True),
+            lambda: sortforum('threadcaption', True),
+            lambda: sortforum('threaddate', True),
+            lambda: sortforum('done', True),
+            lambda: sortforum('threadreplies', True),
+        ]
+    )
 
-def printgeneralmenu():
-    print "1. Get link"
-    print "2. Finish/unfinish a thread"
-    print "3. Preview thread question/task"
-def choosegeneralmenu(choice, thread):
-    if choice == 1:
-        idx = justinput("Select thread to get link from: ")
-        try:
-            thread[idx-1].getlink()
-        except:
-            return
-    elif choice == 2:
-        idx = justinput("Select thread to finish/unfinish: ")
-        try:
-            thread[idx-1].finish()
-        except:
-            return
-    elif choice == 3:
-        idx = justinput("Select thread to preview: ")
-        try:
-            thread[idx-1].getcontent()
-        except:
-            return
-
-def pall(omit=True, unfinishedonly=False):
-    if unfinishedonly:
-        threads = []
-        for t in forum:
-            if not t.done:
-                threads.append(t)
-    else:
-        threads = forum
-
-    len1 = maxcolumnlen("coursecaption", threads)
-    len2 = len("class")
-    len3 = maxcolumnlen("threadcaption", threads)
-    len4 = len("finished")
-    len5 = len("created at")+1
-    len6 = len("replies")
-    lenarr = [3,len1,len2,len3,len4,len5,len6]
-
-    tblline([i+2 for i in lenarr])
-    tblcontent(
-        ['No', 'Courses', 'Class', 'Thread', 'Finished', 'Created at', 'Replies'],
-        lenarr, "ccccccc")
-    tblline([i+2 for i in lenarr])
-
-    prevcourse = ""
-    prevclass = ""
-    i = 1
-    for t in threads:
-        currcourse = t.coursecaption
-        currclass = t.classcaption
-        if omit:
-            if prevcourse == currcourse:
-                currcourse = ""
-            else:
-                prevcourse = currcourse
-            if prevclass == currclass:
-                currclass = ""
-            else:
-                prevclass = currclass
-        tblcontent(
-            [i,currcourse,currclass,t.threadcaption,'Yes' if t.done else 'No',datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").strftime("%d-%b-%Y"), t.threadreplies],
-            lenarr, "rrrlrrr")
-        i += 1
-    tblline([i+2 for i in lenarr])
-def allmenu():
-    choice = 0
-    tableomitted = True
-    while True:
-        pall(tableomitted)
-        printgeneralmenu()
-        print "4. Toggle table view (Current: %s)" % ('Omitted' if tableomitted else 'Full')
-        print "0. Back"
-
-        choice = justinput(">> ")
-        if choice == 0:
-            break
-        elif 1 <= choice and choice <= 3:
-            choosegeneralmenu(choice, forum)
-        elif choice == 4:
-            tableomitted = not tableomitted
 def unfinishedmenu():
-    threads = []
+    unfinisheds = []
     for t in forum:
         if not t.done:
-            threads.append(t)
-    choice = 0
-    while True:
-        pall(False, True)
-        printgeneralmenu()
-        print "0. Back"
-        
-        choice = justinput(">> ")
-        if choice == 0:
-            break
-        elif 1 <= choice and choice <= 3:
-            choosegeneralmenu(choice, threads)
+            unfinisheds.append(t)
+    wsmenu.menu(
+        [
+            strings['menus'][0],
+            strings['menus'][1],
+            strings['menus'][2]
+        ],
+        beforechoices=[
+            lambda: wsprinter.Table(
+                ['No', 'Course', 'Class', 'Thread', 'Finished', 'Created at', 'Replies'],
+                [
+                    [i+1 for i in range(len(unfinisheds))],
+                    [t.coursecaption for t in unfinisheds],
+                    [t.classcaption for t in unfinisheds],
+                    [t.threadcaption for t in unfinisheds],
+                    ['Yes' if t.done else 'No' for t in unfinisheds],
+                    [datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").strftime("%d-%b-%Y") for t in unfinisheds],
+                    [t.threadreplies for t in unfinisheds]
+                ],
+                "rrrlrrr"
+            ).view()
+        ],
+        funcs=[
+            lambda: wsclasses.ForumThread.getlink(
+                wsutils.getidx(strings['prompts'][0],unfinisheds)),
+            lambda: wsclasses.ForumThread.finish(
+                wsutils.getidx(strings['prompts'][1],unfinisheds)),
+            lambda: wsclasses.ForumThread.getcontent(
+                wsutils.getidx(strings['prompts'][2],unfinisheds))
+        ]
+    )
 
-def pcourse(idx):
-    coursenames = getcoursenames()
-    if idx == -1:
-        poverview(False)
-        idx = input("Select course number to show threads from: ")
-        try: # out of range ga
-            coursenames[idx-1] 
-        except:
-            return
-
-    threads = []
-    for t in forum:
-        if t.coursecaption == coursenames[idx-1]:
-            threads.append(t)
-
-    len1 = len("class")
-    len2 = maxcolumnlen("threadcaption", threads)
-    len3 = len("finished")
-    len4 = len(" created at")
-    len5 = len("Replies")
-    lenarr = [3,len1,len2,len3,len4,len5]
-
-    tblline([(len1+len2+len3+len4+len5+20)])
-    tblcontent([coursenames[idx-1]],[(len1+len2+len3+len4+len5+18)],"c")
-    tblline([i+2 for i in lenarr])
-    tblcontent(
-        ['No', 'Class', 'Thread', 'Finished', 'Created at', 'Replies'],
-        lenarr, "cccccc")
-    tblline([i+2 for i in lenarr])
-    i = 1
-    for t in threads:
-        tblcontent(
-            [i,t.classcaption,t.threadcaption, 'Yes' if t.done else 'No', datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").strftime("%d-%b-%Y"), t.threadreplies],
-            lenarr, "rrrrrr")
-        i += 1
-    tblline([i+2 for i in lenarr])
-    return idx
 def coursemenu():
-    coursenames = getcoursenames()
-    coursethreads = []
-    for c in range(len(coursenames)):
-        threads = []
-        for t in forum:
-            if t.coursecaption == coursenames[c]:
-                threads.append(t)
-        coursethreads.append(threads)
+    # remove total row
+    ovtbl = initoverviewtbl()
+    ovtbl = ovtbl.delrow(ovtbl.numrows()-1).delrow(ovtbl.numrows()-1)
+    # ask which course to view
+    ovtbl.view()
+    try:
+        chosencourseidx = wsutils.getidx(strings['prompts'][3],[i for i in range(len(initcoursetbls()))])
+        chosencoursetbl = initcoursetbls()[chosencourseidx]
+    except:
+        return
+    threads = chosencoursetbl.items
 
-    choice = 0
-    courseidx = -1
-    while True:
-        courseidx = pcourse(courseidx)
-        printgeneralmenu()
-        print "0. Back"
-        threads = coursethreads[courseidx-1]
-
-        choice = justinput(">> ")
-        if choice == 0:
-            break
-        elif 1 <= choice and choice <= 3:
-            choosegeneralmenu(choice, threads)
+    wsmenu.menu(
+        [
+            strings['menus'][0],
+            strings['menus'][1],
+            strings['menus'][2],
+        ],
+        beforechoices=[
+            lambda: initcoursetbls()[chosencourseidx].view()
+        ],
+        funcs=[
+            lambda: wsclasses.ForumThread.getlink(
+                wsutils.getidx(strings['prompts'][0],threads)),
+            lambda: wsclasses.ForumThread.finish(
+                wsutils.getidx(strings['prompts'][1],threads)),
+            lambda: wsclasses.ForumThread.getcontent(
+                wsutils.getidx(strings['prompts'][2],threads))
+        ]
+    )
+def allmenu():
+    wsmenu.menu(
+        [
+            strings['menus'][0],
+            strings['menus'][1],
+            strings['menus'][2],
+        ],
+        beforechoices=[
+            lambda: initalltbl().view()
+        ],
+        funcs=[
+            lambda: wsclasses.ForumThread.getlink(
+                wsutils.getidx(strings['prompts'][0],forum)),
+            lambda: wsclasses.ForumThread.finish(
+                wsutils.getidx(strings['prompts'][1],forum)),
+            lambda: wsclasses.ForumThread.getcontent(
+                wsutils.getidx(strings['prompts'][2],forum))
+        ]
+    )
 
 def batchtoggle(timestamp1, timestamp2, status):
     for t in forum:
         tstamp = time.mktime(datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").timetuple())
         if timestamp1 <= tstamp and tstamp <= timestamp2 and t.done != status:
             t.finish(False)
+    wsutils.getchar()
 def batchmenu():
-    choice = 0
-    while True:
-        pall()
-        print "1. Finish all threads from date1 until date2"
-        print "2. Unfinish all threads from date1 until date2"
-        print "0. Back"
+    wsmenu.menu(
+        [
+            "Finish all threads from date1 until date2",
+            "Unfinish all threads from date1 until date2"
+        ],
+        beforechoices=[
+            lambda: initalltbl().view()
+        ],
+        funcs=[
+            lambda: batchtoggle(wsutils.gettimestamp(strings['prompts'][5], "%d/%m/%Y"), wsutils.gettimestamp(strings['prompts'][6], "%d/%m/%Y"), True),
+            lambda: batchtoggle(wsutils.gettimestamp(strings['prompts'][5], "%d/%m/%Y"), wsutils.gettimestamp(strings['prompts'][6], "%d/%m/%Y"), False)
+        ]
+    )
 
-        choice = justinput(">> ")
-        if choice == 0:
-            break
-        elif choice == 1 or choice == 2:
-            date1 = raw_input("Input date1 (format is DD/MM/YYYY, example 30/12/2020): ")
-            date2 = raw_input("Input date2 (format is DD/MM/YYYY, example 30/12/2020): ")
-            stamp1 = time.mktime(datetime.datetime.strptime(date1, "%d/%m/%Y").timetuple())
-            stamp2 = time.mktime(datetime.datetime.strptime(date2, "%d/%m/%Y").timetuple())
-            batchtoggle(stamp1, stamp2, (True if choice == 1 else False))
-            getchar()
-
-def poverview(showtotal=True):
-    len1 = maxcolumnlen("coursecaption")
-    len2 = len("unfinished")
-    len3 = len("newest post")
-    lenarr = [3,len1,len2,len3]
-
-    tblline([i+2 for i in lenarr])
-    tblcontent(['No', 'Your Courses', 'Unfinished', 'Newest Post'], lenarr, "cccc")
-    tblline([i+2 for i in lenarr])
-    
-    coursenames = getcoursenames()
-    total = 0
-    totalnewest = 0
-    i = 1
-    for c in coursenames:
-        count = 0
-        newest = 0
-        for t in forum:
-            if t.coursecaption == c:
-                tstamp = time.mktime(datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").timetuple())
-                if tstamp > newest:
-                    newest = tstamp
-                if not t.done:
-                    count += 1
-        tblcontent(
-            [i,c,count,datetime.datetime.fromtimestamp(newest).strftime("%d-%b-%Y")],
-            lenarr, "rlrl")
-        total += count
-        if newest > totalnewest:
-            totalnewest = newest
-        i += 1
-    tblline([i+2 for i in lenarr])
-    if showtotal:
-        tblcontent(
-            ["Total", total, datetime.datetime.fromtimestamp(totalnewest).strftime("%d-%b-%Y")],
-            [len1+6,len2,len3], "rrr")
-        tblline([len1+2+6,len2+2,len3+2])
+def vcmenu():
+    wsmenu.menu(
+        [
+            strings['menus'][0],
+            # "delete finished vidconfs"
+        ],
+        beforechoices=[
+            lambda: initvctbl().view()
+        ],
+        funcs=[
+            lambda: wsclasses.Vidconf.getlink(wsutils.getidx(strings['prompts'][4],vidconfs))
+        ]
+    )
 
 def getcoursenames():
     coursenames = []
@@ -533,43 +372,134 @@ def getcoursenames():
             coursenames.append(t.coursecaption)
 
     return coursenames
+def initalltbl():
+    return wsprinter.Table(
+        ['No', 'Course', 'Class', 'Thread', 'Finished', 'Created at', 'Replies'],
+        [
+            [i+1 for i in range(len(forum))],
+            [t.coursecaption for t in forum],
+            [t.classcaption for t in forum],
+            [t.threadcaption for t in forum],
+            ['Yes' if t.done else 'No' for t in forum],
+            [datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").strftime("%d-%b-%Y") for t in forum],
+            [t.threadreplies for t in forum]
+        ],
+        "rrrlrrr",
+        forum
+    )
+def initoverviewtbl():
+    coursenames = getcoursenames()
 
-def maxcolumnlen(col, arr=None):
-    data = []
-    if not arr:
+    unfinishedcount = [0 for i in range(len(coursenames))]
+    for t in forum:
+        if not t.done:
+            unfinishedcount[coursenames.index(t.coursecaption)] += 1
+    newests = []
+    for c in coursenames:
+        newests.append(max([t.threaddate for t in forum if t.coursecaption == c])[:10])
+    tbl = wsprinter.Table(
+        ['No', 'Your Courses', 'Unfinished', 'Newest Post'],
+        [
+            [i+1 for i in range(len(coursenames))],
+            coursenames,
+            unfinishedcount,
+            [datetime.datetime.strptime(newest, "%Y-%m-%d").strftime("%d-%b-%Y") for newest in newests]
+        ],
+        "rlrr"
+    )
+
+    # add total row
+    tbl.addrow(len(tbl.rows),
+        wsprinter.tblcontent(
+        [
+            'Total',
+            sum(unfinishedcount),
+            datetime.datetime.strptime(max(newests), "%Y-%m-%d").strftime("%d-%b-%Y")
+        ],
+        [tbl.clen(0,1),tbl.clen(2),tbl.clen(3)],
+        "rrr"
+    ))
+    tbl.addrow(len(tbl.rows), wsprinter.tblline([tbl.clen(0,1),tbl.clen(2),tbl.clen(3)]))
+
+    return tbl
+def initcoursetbls():
+    coursenames = getcoursenames()
+    coursetbls = []
+    for c in coursenames:
+        threads = []
+        unfinished = 0
         for t in forum:
-            data.append(getattr(t, col))
-    else:
-        for t in arr:
-            data.append(getattr(t, col))
-    return len(max(data, key=len))
-def tblline(widths):
-    line = "+"
-    for w in widths:
-        line += "-"*w + "+"
-    print line
-def tblcontent(contents, widths, alignment):
-    if len(contents) != len(widths):
-        raise Exception("Table content and widths contain different number of columns")
-        return
-    line = "|"
-    for i in range(len(contents)):
-        if alignment[i] == 'c':
-            line += " %s |" % (str(contents[i]).center(widths[i]))
-        elif alignment[i] == 'l':
-            line += " %-*s |" % (widths[i], str(contents[i]))
-        elif alignment[i] == 'r':
-            line += " %*s |" % (widths[i], str(contents[i]))
-    print line
+            if t.coursecaption == c:
+                threads.append(t)
+                if not t.done:
+                    unfinished += 1
+        
+        tbl = wsprinter.Table(
+                ['No', 'Class', 'Thread', 'Finished', 'Created at', 'Replies'],
+                [
+                    [i+1 for i in range(len(threads))],
+                    [t.classcaption for t in threads],
+                    [t.threadcaption for t in threads],
+                    ['Yes' if t.done else 'No' for t in threads],
+                    [datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").strftime("%d-%b-%Y") for t in threads],
+                    [t.threadreplies for t in threads]
+                ],
+                "rrlrrr",
+                threads
+        )
+        # add header row
+        tbl.addrow(0,
+            wsprinter.tblline([sum(i+2 for i in tbl.lenarr)+3])
+        )
+        tbl.addrow(1,
+            wsprinter.tblcontent(
+                [c],
+                [sum(i+2 for i in tbl.lenarr)+3],
+                "c"
+            )
+        )
+        # add total row
+        tbl.addrow(tbl.numrows(),
+            wsprinter.tblcontent(
+                ['Total', unfinished, ''],
+                [
+                    tbl.clen(0,1,2),
+                    tbl.clen(3),
+                    tbl.clen(4,5)
+                ],
+                "rrr"
+            )
+        )
+        tbl.addrow(tbl.numrows(),
+            wsprinter.tblline(
+                [
+                    tbl.clen(0,1,2),
+                    tbl.clen(3),
+                    tbl.clen(4,5)
+                ]
+            )
+        )
 
-def getchar():
-    print "Enter to continue"
-    try:
-        input()
-        print ""
-    except:
-        print ""
-        return
+        coursetbls.append(tbl)
+    return coursetbls
+def initvctbl():
+    return wsprinter.Table(
+        ['No', 'Course', 'Week', 'Session', 'Date', 'Time', 'Meeting No', 'Password'],
+        [
+            [i+1 for i in range(len(vidconfs))],
+            [v.coursecaption for v in vidconfs],
+            [v.week for v in vidconfs],
+            [v.session for v in vidconfs],
+            [datetime.datetime.strptime(v.date, "%Y-%m-%d").strftime("%d-%b-%Y") for v in vidconfs],
+            [v.time for v in vidconfs],
+            [v.meetnbr for v in vidconfs],
+            [v.pw for v in vidconfs]
+        ],
+        "rlrrrrrr"
+    )
+def initmainmenutbl():
+    return initoverviewtbl()
+
 def justinput(prompt):
     while True:
         try:
@@ -594,12 +524,33 @@ def fixissues():
             fixes += 1
         # t.threadcaption = ''.join([i if ord(i) < 128 else '-' for i in t.threadcaption])
     print "[!] Fixed %s issue(s)" % fixes
-    getchar()
+    wsutils.getchar()
+def help():
+    print "wfhsucks if a \"program\" i made to help me deal with stuff like"
+    print "    checking all forum for new threads easily"
+    print "    making sure i finish all my forum assignments"
+    print "    not having to deal with bimay's loading speed"
+    print "    get all vidconf schedules easily"
+    print "using it alone feels like a waste tho, so here ya go, hope it helps"
+    print "stay safe"
+    print "any improvements are welcome at https://github.com/kevindoubleu/wfhsucks"
+    wsutils.getchar()
+def faq():
+    print "FAQ"
+    print "Q: why do you need my phpsessid ?"
+    print "A: to get and acces into bimay, bimay needs your phpsessid to make sure ur a legit student"
+    print ""
+    print "Q: are you stealing my phpsessid ?"
+    print "A: no, you can check all the requests made by this script with wireshark or something, or check the source code yourself"
+    wsutils.getchar()
+
 def parseargs():
     if len(sys.argv) < 2:
         print "Usage: python %s phpsessid [academic_year]" % __file__
         print "    phpsessid : php session id from bimay, it's in your browser cookies"
         print "    academic_year : your current academic year, e.g. 1920, default is 1920"
+        faq()
+        help()
         exit()
 
     global acadyear, cookies
@@ -608,7 +559,6 @@ def parseargs():
     cookies['PHPSESSID'] = str(sys.argv[1])
 def main():
     parseargs()
-
     try:
         global forum
         forum = loadp("forum%s.data" % acadyear)
@@ -630,59 +580,45 @@ def main():
             print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
             exit()
 
-    choice = 0
-    while True:
-        poverview()
-        print "wfhsucks main menu"
-        print "Forum"
-        # print "    Forum"
-        print "1. Check for new threads"
-        print "2. Print all unfinished threads"
-        print "3. Print threads from a course"
-        print "4. Print threads from all courses"
-        print "5. Batch finish/unfinish"
-        print "6. Sort table"
-        print "Video Conference"
-        print "7. Check for new upcoming video conferences"
-        print "8. Print all upcoming video conferences"
-        print "Others"
-        print "9. Quick fix table printing issues"
-        print "10. Help"
-        print "0. Exit"
-        savep(forum, "forum%s.data" % acadyear)
-        savep(vidconfs, "vidconf%s.data" % acadyear)
-
-        choice = justinput(">> ")
-        if choice == 0:
-            break
-        elif choice == 1:
-            print "[*] Checking for new forums"
-            getforum()
-        elif choice == 2:
-            unfinishedmenu()
-        elif choice == 3:
-            coursemenu()
-        elif choice == 4:
-            allmenu()
-        elif choice == 5:
-            batchmenu()
-        elif choice == 6:
-            sortmenu()
-        elif choice == 7:
-            getvidconfs()
-        elif choice == 8:
-            vcmenu()
-        elif choice == 9:
-            fixissues()
-        elif choice == 10:
-            print "wfhsucks if a \"program\" i made to help me deal with stuff like"
-            print " checking all forum for new threads easily"
-            print " making sure i finish all my forum assignments"
-            print " not having to deal with bimay's loading speed"
-            print "using it alone feels like a waste tho, so here ya go, hope it helps"
-            print "stay safe"
-            print "any improvements are welcome at https://github.com/kevindoubleu/wfhsucks"
-            getchar()
+    wsmenu.menu(
+        [
+            "//wfhsucks main menu",
+            "//    Forum",
+            "        Check for new threads",
+            "        Print all unfinished threads",
+            "        Print threads from a course",
+            "        Print threads from all courses",
+            "        Batch finish/unfinish",
+            "        Sort table",
+            "//    Video conference",
+            "        Check for new upcoming video conferences",
+            "        Print all upcoming video conferences",
+            "//    Others",
+            "        Quick fix table printing issues",
+            "        Quick help",
+            "        FAQ"
+        ],
+        beforechoices=[
+            lambda: initmainmenutbl().view()    
+        ],
+        afterchoices=[
+            lambda: savep(forum, "forum%s.data" % acadyear),
+            lambda: savep(vidconfs, "vidconf%s.data" % acadyear)
+        ],
+        funcs=[
+            lambda: getforum(),
+            lambda: unfinishedmenu(),
+            lambda: coursemenu(),
+            lambda: allmenu(),
+            lambda: batchmenu(),
+            lambda: sortmenu(),
+            lambda: getvidconfs(),
+            lambda: vcmenu(),
+            lambda: fixissues(),
+            lambda: help(),
+            lambda: faq()
+        ]
+    )
 
 if __name__ == "__main__":
     main()

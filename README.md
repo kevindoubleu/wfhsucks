@@ -15,11 +15,13 @@ any improvements are welcome
 
 ### known bugs
 - replies count doesnt get updated when checking forums
+- upcoming vc table shows all vc (take time into consideration too, not just date)
 
 ### upcoming features
-- better table function
-- better menu function
-- upcoming vidconf overview
+- support for forum attachments
+- 'last updated' in overview
+- add disclaimer this doesnt cover vc meeting that are announced outside bimay
+- auto sort vidconf tbl by date AND TIME
+- upcoming vidconf shown in overview
 - forum overview only shows courses with non 0 unfinished threads
 - multithreading
-- support for email and password mode, using getopt
