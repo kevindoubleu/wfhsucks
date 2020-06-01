@@ -14,14 +14,13 @@ stay safe
 any improvements are welcome
 
 ### known bugs
-- upcoming vc table shows all vc (take time into consideration too, not just date)
+- currently none, yay!
 
 ### upcoming features
 - option to delete vc that have already passed
 - support for forum attachments
 - 'last updated' in overview
 - add disclaimer this doesnt cover vc meeting that are announced outside bimay
-- auto sort vidconf tbl by date AND TIME
 - upcoming vidconf shown in overview
 - forum overview only shows courses with non 0 unfinished threads
 - multithreading

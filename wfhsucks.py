@@ -181,7 +181,7 @@ def getvidconfs():
                     vidconfs.append(vc)
 
     # immediately sort vc by date
-    vidconfs.sort(key=lambda x: getattr(x, 'date'))
+    vidconfs.sort(key=lambda x: (getattr(x, 'date'), getattr(x, 'time')))
 
     print "[!] Done, %d new vidconfs have been added" % count
     wsutils.getchar()
