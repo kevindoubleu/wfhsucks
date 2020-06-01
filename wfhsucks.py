@@ -101,6 +101,8 @@ def getforum():
                     print "[+] New thread: "+t.threadcaption
                     count += 1
                     forum.append(t)
+                else: 
+                    next((t for t in forum if t.threadid == thread['ID'])).updatereplies(str(thread['replies']).encode("utf-8"))
     print "[!] Done, %d new threads have been added" % count
     wsutils.getchar()
     print "[*] If problems occur, delete 'forum%s.data' file first and check if phpsessid already expired" % acadyear

@@ -35,6 +35,9 @@ class ForumThread(object):
         print self.threadcontent
         print "----- Content -----\n"
         wsutils.getchar()
+    
+    def updatereplies(self, newreplies):
+        self.threadreplies = newreplies
 
 class Vidconf(object):
     "blueprint for 1 vidconf meeting"
