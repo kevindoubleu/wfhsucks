@@ -14,10 +14,10 @@ stay safe
 any improvements are welcome
 
 ### known bugs
-- replies count doesnt get updated when checking forums
 - upcoming vc table shows all vc (take time into consideration too, not just date)
 
 ### upcoming features
+- option to delete vc that have already passed
 - support for forum attachments
 - 'last updated' in overview
 - add disclaimer this doesnt cover vc meeting that are announced outside bimay
