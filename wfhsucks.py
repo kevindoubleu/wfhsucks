@@ -160,20 +160,27 @@ def getvidconfs():
         print "[*] Checking "+c.coursecaption+" - "+c.classcaption
         path = "/services/ci/index.php/student/classes/nextClass/%s/%s" % (acadyear, c.courseid)
         try:
-            classnbr = send(path, "")[0]['CLASS_NBR']
+            classdata = send(path, "")
         except:
             print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
             return
 
-        vclist = getcoursevclist(c, classnbr)
-        if not vclist:
-            continue
-        
-        for vc in vclist:
-            if vc.meetnbr not in [v.meetnbr for v in vidconfs]:
-                print "[+] New upcoming vidconf: "+vc.coursecaption+" - Week "+vc.week+" ("+vc.date+" at "+vc.time+")"
-                count += 1
-                vidconfs.append(vc)
+        for cd in classdata:
+            classnbr = cd['CLASS_NBR']
+            vclist = getcoursevclist(c, classnbr)
+
+            if not vclist:
+                continue
+            
+            for vc in vclist:
+                if vc.meetnbr not in [v.meetnbr for v in vidconfs]:
+                    print "[+] New upcoming vidconf: "+vc.coursecaption+" - Week "+vc.week+" ("+vc.date+" at "+vc.time+")"
+                    count += 1
+                    vidconfs.append(vc)
+
+    # immediately sort vc by date
+    vidconfs.sort(key=lambda x: getattr(x, 'date'))
+
     print "[!] Done, %d new vidconfs have been added" % count
     wsutils.getchar()
     print "[*] If problems occur, delete 'vidconf%s.data' file first and check if phpsessid already expired" % acadyear
