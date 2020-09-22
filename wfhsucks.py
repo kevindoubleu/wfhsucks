@@ -8,6 +8,7 @@ import datetime # convert date time format for easy reading
 import time # batch finish/unfinish
 import sys # args
 import re # parse html into plaintext
+import traceback # exception stack traces
 
 import wsclasses
 import wsutils
@@ -17,7 +18,7 @@ import wsmenu
 url = "http://binusmaya.binus.ac.id"
 forumpath = "/services/ci/index.php/forum/"
 
-acadyear = "1920"
+acadyear = "2010"
 headers = {
     "Referer": "https://binusmaya.binus.ac.id/newStudent/",
     "X-Requested-With": "XMLHttpRequest",
@@ -110,10 +111,13 @@ def getforum():
 def getcourses():
     path = forumpath+"getCourse"
     payload = '{"acadCareer":"RS1","period":"%s","Institution":"BNS01"}' % acadyear
-    courses = send(path, payload)['rows']
-    courses = json.loads(courses)
-
-    return courses
+    result = send(path, payload)
+    if result['status'] == "success":
+        courses = result['rows']
+        courses = json.loads(courses)
+        return courses
+    else:
+        return []
 def getclasses(course):
     path = forumpath+"getClass"
     payload = '{"acadCareer":"RS1","period":"%s","course":"%s","Institution":"BNS01"}' % (acadyear, course['ID'])
@@ -124,10 +128,13 @@ def getclasses(course):
 def getthreads(course, kelas):
     path = forumpath+"getThread"
     payload = '{"forumtypeid":1,"acadCareer":"RS1","period":"%s","course":"%s","classid":"%s","topic":"","Institution":"BNS01","SESSIONIDNUM":""}' % (acadyear, course['ID'], kelas['ID'])
-    threads = send(path, payload)['rows']
-    threads = json.loads(threads)
-
-    return threads
+    result = send(path, payload)
+    if result['status'] == "success":
+        threads = result['rows']
+        threads = json.loads(threads)
+        return threads
+    else:
+        return []
 def getthreaddate(thread):
     path = forumpath+"getReply"
     payload = '{"threadid":"%s"}' % thread['ID']
@@ -418,17 +425,18 @@ def initoverviewtbl():
     )
 
     # add total row
-    tbl.addrow(len(tbl.rows),
-        wsprinter.tblcontent(
-        [
-            'Total',
-            sum(unfinishedcount),
-            datetime.datetime.strptime(max(newests), "%Y-%m-%d").strftime("%d-%b-%Y")
-        ],
-        [tbl.clen(0,1),tbl.clen(2),tbl.clen(3)],
-        "rrr"
-    ))
-    tbl.addrow(len(tbl.rows), wsprinter.tblline([tbl.clen(0,1),tbl.clen(2),tbl.clen(3)]))
+    if len(forum) != 0:
+        tbl.addrow(len(tbl.rows),
+            wsprinter.tblcontent(
+            [
+                'Total',
+                sum(unfinishedcount),
+                datetime.datetime.strptime(max(newests), "%Y-%m-%d").strftime("%d-%b-%Y")
+            ],
+            [tbl.clen(0,1),tbl.clen(2),tbl.clen(3)],
+            "rrr"
+        ))
+        tbl.addrow(len(tbl.rows), wsprinter.tblline([tbl.clen(0,1),tbl.clen(2),tbl.clen(3)]))
 
     return tbl
 def initcoursetbls():
@@ -544,22 +552,23 @@ def help():
     print "stay safe"
     print "any improvements are welcome at https://github.com/kevindoubleu/wfhsucks"
     wsutils.getchar()
-def faq():
+def faq(hold=None):
     print "FAQ"
     print "Q: why do you need my phpsessid ?"
     print "A: to get and acces into bimay, bimay needs your phpsessid to make sure ur a legit student"
     print ""
     print "Q: are you stealing my phpsessid ?"
     print "A: no, you can check all the requests made by this script with wireshark or something, or check the source code yourself"
-    wsutils.getchar()
+    if hold != False:
+        wsutils.getchar()
 
 def parseargs():
     if len(sys.argv) < 2:
         print "Usage: python %s phpsessid [academic_year]" % __file__
         print "    phpsessid : php session id from bimay, it's in your browser cookies"
-        print "    academic_year : your current academic year, e.g. 1920, default is 1920"
-        faq()
-        help()
+        print "    academic_year : your current academic year"
+        print "                    e.g. 1920, default is 2010 for b22 on 5th semester"
+        faq(False)
         exit()
 
     global acadyear, cookies
@@ -575,7 +584,8 @@ def main():
         print "[+] Initiating forum data, first time run only"
         try:
             getforum()
-        except:
+        except Exception:
+            traceback.print_exc()
             print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
             exit()
     try:
