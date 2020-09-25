@@ -609,7 +609,7 @@ def main():
             "        Print threads from all courses",
             "        Batch finish/unfinish",
             "        Sort table",
-            "//    Video conference",
+            "//    Video conference (obsolete and no longer maintained, use https://myclass.apps.binus.ac.id instead)",
             "        Check for new upcoming video conferences",
             "        Print all upcoming video conferences",
             "//    Others",
