@@ -550,6 +550,7 @@ def help():
     print "    get all vidconf schedules easily"
     print "using it alone feels like a waste tho, so here ya go, hope it helps"
     print "stay safe"
+    print "more info about the program at https://kevindoubleu.github.io/projects/python/wfhsucks/index.html"
     print "any improvements are welcome at https://github.com/kevindoubleu/wfhsucks"
     wsutils.getchar()
 def faq(hold=None):
