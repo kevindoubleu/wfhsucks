@@ -559,6 +559,12 @@ def faq(hold=None):
     print ""
     print "Q: are you stealing my phpsessid ?"
     print "A: no, you can check all the requests made by this script with wireshark or something, or check the source code yourself"
+    print ""
+    print "Q: I can't use my phpsessid ?"
+    print "A: bimay probably gave you a new phpsessid, refresh / relog and get the new phpsessid"
+    print ""
+    print "Q: loading new forum data doesn't do anything ?"
+    print "A: bimay probably gave you a new phpsessid, refresh / relog and get the new phpsessid"
     if hold != False:
         wsutils.getchar()
 
@@ -614,7 +620,7 @@ def main():
             "        Print all upcoming video conferences",
             "//    Others",
             "        Quick fix table printing issues",
-            "        Quick help",
+            "        Quick info",
             "        FAQ"
         ],
         beforechoices=[
