@@ -30,12 +30,14 @@ cookies = {
 
 forum = []
 vidconfs = []
+myname = ""
 
 strings = {
     "menus": [
         "Get link",
         "Finish/unfinish a thread",
         "Preview a thread",
+        "Reply to a thread (NEW!)",
     ],
     "prompts": [
         "Select thread to get link from: ",
@@ -44,9 +46,13 @@ strings = {
         "Select course number to show threads from: ",
         "Select vidconf to get link from: ",
         "Input date1 (format is DD/MM/YYYY, example 30/12/2020): ",
-        "Input date2 (format is DD/MM/YYYY, example 30/12/2020): "
+        "Input date2 (format is DD/MM/YYYY, example 30/12/2020): ",
+        "Input reply title: ",
+        "Input reply description / content: ",
+        "Select thread to reply to: ",
     ]
 }
+
 
 def savep(obj, filename):
     f = open(filename, "w")
@@ -55,9 +61,18 @@ def savep(obj, filename):
 def loadp(filename):
     f = open(filename, "r")
     return pickle.load(f)
+def getmyname():
+    path = "/services/ci/index.php/general/getBinusianData"
+    mydata = send(path, "")
+    myname = mydata['FIRST_NAME'] + " " + mydata['LAST_NAME']
 
-def send(path, payload):
-    r = requests.post(url+path, headers=headers, cookies=cookies, data=payload, verify=True)
+    return myname
+
+def send(path, payload, headersncookies=None):
+    if headersncookies is not None:
+        r = requests.post(url+path, headers=headersncookies[0], cookies=headersncookies[1], data=payload, verify=True)
+    else:
+        r = requests.post(url+path, headers=headers, cookies=cookies, data=payload, verify=True)
     
     if r.status_code != 200:
         print "[!] Error HTTP "+str(r.status_code)
@@ -87,6 +102,7 @@ def getforum():
 
             for thread in threads:
                 if thread['ID'] not in [t.threadid for t in forum]:
+                    postdate, content, answer = getthreaddetails(thread)
                     t = wsclasses.ForumThread(
                         course['Caption'].encode("utf-8")[:8],
                         course['Caption'].encode("utf-8")[11:],
@@ -96,10 +112,14 @@ def getforum():
                         urllib.unquote(thread['ForumThreadTitle'].encode("utf-8", 'ignore')),
                         str(thread['ID']).encode("utf-8"),
                         str(thread['replies']).encode("utf-8"),
-                        getthreaddate(thread).encode("utf-8"),
-                        getthreadcontent(thread).encode("utf-8")
+                        postdate.encode("utf-8"),
+                        content.encode("utf-8"),
+                        answer.encode("utf-8")
                     )
                     print "[+] New thread: "+t.threadcaption
+                    if len(t.threadanswer) > 0:
+                        print "[*] My answer: " + t.threadanswer
+                        t.finish(hold=False)
                     count += 1
                     forum.append(t)
                 else: 
@@ -135,6 +155,25 @@ def getthreads(course, kelas):
         return threads
     else:
         return []
+def getthreaddetails(thread):
+    path = forumpath+"getReply"
+    payload = '{"threadid":"%s"}' % thread['ID']
+    replies = send(path, payload)['rows']
+    replies = json.loads(replies)
+
+    postdate = replies[0]['PostDate']
+
+    content = replies[0]['Name']+"\n\n"+replies[0]['PostContent']
+    content = "\n".join(content.splitlines())
+    content = re.sub('<[^<]+?>', '', content)
+
+    answer = ""
+    for r in replies:
+        if r['Name'] == myname:
+            answer = r['PostContent']
+            break
+
+    return postdate, content, answer
 def getthreaddate(thread):
     path = forumpath+"getReply"
     payload = '{"threadid":"%s"}' % thread['ID']
@@ -153,6 +192,15 @@ def getthreadcontent(thread):
     content = re.sub('<[^<]+?>', '', content)
 
     return content
+def getthreadanswer(thread):
+    path = forumpath+"getReply"
+    payload = '{"threadid":"%s"}' % thread['ID']
+    replies = send(path, payload)['rows']
+    replies = json.loads(replies)
+    for r in replies:
+        if r['Name'] == myname:
+            return r['PostContent']
+    return ""
 
 def getvidconfs():
     global vidconfs
@@ -268,7 +316,8 @@ def unfinishedmenu():
         [
             strings['menus'][0],
             strings['menus'][1],
-            strings['menus'][2]
+            strings['menus'][2],
+            strings['menus'][3]
         ],
         beforechoices=[
             lambda: wsprinter.Table(
@@ -291,7 +340,9 @@ def unfinishedmenu():
             lambda: wsclasses.ForumThread.finish(
                 wsutils.getidx(strings['prompts'][1],unfinisheds)),
             lambda: wsclasses.ForumThread.getcontent(
-                wsutils.getidx(strings['prompts'][2],unfinisheds))
+                wsutils.getidx(strings['prompts'][2],unfinisheds)),
+            lambda: wsclasses.ForumThread.reply(
+                wsutils.getidx(strings['prompts'][9],unfinisheds),headers,cookies),
         ]
     )
 
@@ -313,6 +364,7 @@ def coursemenu():
             strings['menus'][0],
             strings['menus'][1],
             strings['menus'][2],
+            strings['menus'][3],
         ],
         beforechoices=[
             lambda: initcoursetbls()[chosencourseidx].view()
@@ -323,7 +375,9 @@ def coursemenu():
             lambda: wsclasses.ForumThread.finish(
                 wsutils.getidx(strings['prompts'][1],threads)),
             lambda: wsclasses.ForumThread.getcontent(
-                wsutils.getidx(strings['prompts'][2],threads))
+                wsutils.getidx(strings['prompts'][2],threads)),
+            lambda: wsclasses.ForumThread.reply(
+                wsutils.getidx(strings['prompts'][9],threads),headers,cookies),
         ]
     )
 def allmenu():
@@ -332,6 +386,7 @@ def allmenu():
             strings['menus'][0],
             strings['menus'][1],
             strings['menus'][2],
+            strings['menus'][3],
         ],
         beforechoices=[
             lambda: initalltbl().view()
@@ -342,7 +397,9 @@ def allmenu():
             lambda: wsclasses.ForumThread.finish(
                 wsutils.getidx(strings['prompts'][1],forum)),
             lambda: wsclasses.ForumThread.getcontent(
-                wsutils.getidx(strings['prompts'][2],forum))
+                wsutils.getidx(strings['prompts'][2],forum)),
+                lambda: wsclasses.ForumThread.reply(
+                wsutils.getidx(strings['prompts'][9],forum),headers,cookies),
         ]
     )
 
@@ -584,12 +641,15 @@ def parseargs():
     cookies['PHPSESSID'] = str(sys.argv[1])
 def main():
     parseargs()
+    global myname
+    myname = getmyname()
     try:
         global forum
         forum = loadp("forum%s.data" % acadyear)
     except:
         print "[+] Initiating forum data, first time run only"
         try:
+            print "[+] Hello there "+myname
             getforum()
         except Exception:
             traceback.print_exc()
@@ -605,15 +665,16 @@ def main():
         except:
             print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
             exit()
-
+    
     wsmenu.menu(
         [
+            "//Welcome " + myname,
             "//wfhsucks main menu",
             "//    Forum",
             "        Check for new threads",
-            "        Print all unfinished threads",
-            "        Print threads from a course",
-            "        Print threads from all courses",
+            "        Print all unfinished threads (NEW!)",
+            "        Print threads from a course (NEW!)",
+            "        Print threads from all courses (NEW!)",
             "        Batch finish/unfinish",
             "        Sort table",
             "//    Video conference (obsolete and no longer maintained, use https://myclass.apps.binus.ac.id instead)",
