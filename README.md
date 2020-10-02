@@ -27,6 +27,50 @@ Want to reply to a forum fast but don't want to go into bimay? That's alright, y
 
 Note that the reply feature is designed for short replies (for attendance), for multiline content, you'll have to replace "enter" with `<br />`, because "enter" is reserved for finishing the reply.
 
+### how to run
+
+Login to bimay, get your PHPSESSID cookie, for example `th1s15myphps3ss1d`, then you run the script like this. Assuming your default python installation is python2.
+
+```sh
+python wfhsucks.py th1s15myphps3ss1d
+```
+
+#### help
+
+For a short help, run this.
+
+```sh
+python wfhsucks.py
+```
+
+### common errors
+
+Before trying any of this, make sure you grab the newest PHPSESSID because bimay regularly gives you a new one.
+
+#### empty forum
+
+If you're using this after the year 2020, you need to specify an 4 digit argument, the first 2 digits refer to the year, third digit is either 1 (odd semester) or 2 (even semester), fourth number is always 0 (assuming you're not in a short semester or repeating a semester). 
+
+For example you're running this in 2021 odd semester.
+
+```sh
+python wfhsucks.py th1s15myphps3ss1d 2110
+```
+
+##### import errors
+
+If you recieve an error on importing modules, run this.
+
+```sh
+pip install -r requirements.txt
+```
+
+or
+
+```sh
+python2 -m pip install -r requirements.txt
+```
+
 ### why did I make this
 
 wfhsucks if a "program" i made to help me deal with stuff like
