@@ -174,33 +174,6 @@ def getthreaddetails(thread):
             break
 
     return postdate, content, answer
-def getthreaddate(thread):
-    path = forumpath+"getReply"
-    payload = '{"threadid":"%s"}' % thread['ID']
-    replies = send(path, payload)['rows']
-    replies = json.loads(replies)
-    postdate = replies[0]['PostDate']
-
-    return postdate
-def getthreadcontent(thread):
-    path = forumpath+"getReply"
-    payload = '{"threadid":"%s"}' % thread['ID']
-    replies = send(path, payload)['rows']
-    replies = json.loads(replies)
-    content = replies[0]['Name']+"\n\n"+replies[0]['PostContent']
-    content = "\n".join(content.splitlines())
-    content = re.sub('<[^<]+?>', '', content)
-
-    return content
-def getthreadanswer(thread):
-    path = forumpath+"getReply"
-    payload = '{"threadid":"%s"}' % thread['ID']
-    replies = send(path, payload)['rows']
-    replies = json.loads(replies)
-    for r in replies:
-        if r['Name'] == myname:
-            return r['PostContent']
-    return ""
 
 def getvidconfs():
     global vidconfs
@@ -641,8 +614,14 @@ def parseargs():
     cookies['PHPSESSID'] = str(sys.argv[1])
 def main():
     parseargs()
-    global myname
-    myname = getmyname()
+    try:
+        global myname
+        myname = getmyname()
+    except:
+        traceback.print_exc()
+        print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
+        exit()
+
     try:
         global forum
         forum = loadp("forum%s.data" % acadyear)
@@ -663,6 +642,7 @@ def main():
         try:
             getvidconfs()
         except:
+            traceback.print_exc()
             print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
             exit()
     
