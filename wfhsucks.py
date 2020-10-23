@@ -37,7 +37,9 @@ strings = {
         "Get link",
         "Finish/unfinish a thread",
         "Preview a thread",
-        "Reply to a thread (NEW!)",
+        "Reply to a thread",
+        "View my reply (NEW!)",
+        "View other student's replies (NEW!)",
     ],
     "prompts": [
         "Select thread to get link from: ",
@@ -50,6 +52,8 @@ strings = {
         "Input reply title: ",
         "Input reply description / content: ",
         "Select thread to reply to: ",
+        "Select thread to view my reply from: ",
+        "Select thread to view all replies from: ",
     ]
 }
 
@@ -73,7 +77,7 @@ def send(path, payload, headersncookies=None):
         r = requests.post(url+path, headers=headersncookies[0], cookies=headersncookies[1], data=payload, verify=True)
     else:
         r = requests.post(url+path, headers=headers, cookies=cookies, data=payload, verify=True)
-    
+
     if r.status_code != 200:
         print "[!] Error HTTP "+str(r.status_code)
         print r.text
@@ -89,7 +93,7 @@ def send(path, payload, headersncookies=None):
     except:
         return r.text
 
-def getforum():
+def getforum(fullrefresh=None):
     global forum
 
     count = 0
@@ -102,7 +106,7 @@ def getforum():
 
             for thread in threads:
                 if thread['ID'] not in [t.threadid for t in forum]:
-                    postdate, content, answer = getthreaddetails(thread)
+                    postdate, content, answer, studentreplies, hasattachment = getthreaddetails(thread)
                     t = wsclasses.ForumThread(
                         course['Caption'].encode("utf-8")[:8],
                         course['Caption'].encode("utf-8")[11:],
@@ -114,7 +118,9 @@ def getforum():
                         str(thread['replies']).encode("utf-8"),
                         postdate.encode("utf-8"),
                         content.encode("utf-8"),
-                        answer.encode("utf-8")
+                        answer.encode("utf-8"),
+                        studentreplies,
+                        hasattachment,
                     )
                     print "[+] New thread: "+t.threadcaption
                     if len(t.threadanswer) > 0:
@@ -123,7 +129,13 @@ def getforum():
                     count += 1
                     forum.append(t)
                 else: 
-                    next((t for t in forum if t.threadid == thread['ID'])).updatereplies(str(thread['replies']).encode("utf-8"))
+                    nextthread = next((t for t in forum if t.threadid == thread['ID']))
+                    nextthread.updatereplies(str(thread['replies']).encode("utf-8"))
+                    if fullrefresh:
+                        _, _, _, newstudentreplies, _ = getthreaddetails(thread)
+                        if nextthread.studentreplies != newstudentreplies:
+                            print "[+] New replies in: " + nextthread.threadcaption
+                        nextthread.updatestudentreplies(newstudentreplies)
     print "[!] Done, %d new threads have been added" % count
     wsutils.getchar()
     print "[*] If problems occur, delete 'forum%s.data' file first and check if phpsessid already expired" % acadyear
@@ -166,6 +178,7 @@ def getthreaddetails(thread):
     content = replies[0]['Name']+"\n\n"+replies[0]['PostContent']
     content = "\n".join(content.splitlines())
     content = re.sub('<[^<]+?>', '', content)
+    content = re.sub('&nbsp;', ' ', content)
 
     answer = ""
     for r in replies:
@@ -173,7 +186,27 @@ def getthreaddetails(thread):
             answer = r['PostContent']
             break
 
-    return postdate, content, answer
+    studentreplies = []
+    for r in replies:
+        curreply = []
+        curcontent = r['Name']
+        curcontent += " - "
+        curcontent += r['PostDate']
+        curreply.append(curcontent.encode("utf-8"))
+
+        curcontent = r['PostContent']
+        curcontent = re.sub('<[^<]+?>', '', curcontent)
+        curcontent = re.sub('&nbsp;', ' ', curcontent)
+        curreply.append(curcontent.encode("utf-8"))
+
+        studentreplies.append(curreply)
+    
+    if replies[0]['FileName']:
+        hasattachment = True
+    else:
+        hasattachment = False
+
+    return postdate, content, answer, studentreplies, hasattachment
 
 def getvidconfs():
     global vidconfs
@@ -290,11 +323,13 @@ def unfinishedmenu():
             strings['menus'][0],
             strings['menus'][1],
             strings['menus'][2],
-            strings['menus'][3]
+            strings['menus'][3],
+            strings['menus'][4],
+            strings['menus'][5],
         ],
         beforechoices=[
             lambda: wsprinter.Table(
-                ['No', 'Course', 'Class', 'Thread', 'Finished', 'Created at', 'Replies'],
+                ['No', 'Course', 'Class', 'Thread', 'Finished', 'Created at', 'Replies', 'File'],
                 [
                     [i+1 for i in range(len(unfinisheds))],
                     [t.coursecaption for t in unfinisheds],
@@ -302,9 +337,10 @@ def unfinishedmenu():
                     [t.threadcaption for t in unfinisheds],
                     ['Yes' if t.done else 'No' for t in unfinisheds],
                     [datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").strftime("%d-%b-%Y") for t in unfinisheds],
-                    [t.threadreplies for t in unfinisheds]
+                    [t.threadreplies for t in unfinisheds],
+                    ['Yes' if t.hasattachment else 'No' for t in unfinisheds],
                 ],
-                "rrrlrrr"
+                "rrrlrrrr"
             ).view()
         ],
         funcs=[
@@ -315,10 +351,13 @@ def unfinishedmenu():
             lambda: wsclasses.ForumThread.getcontent(
                 wsutils.getidx(strings['prompts'][2],unfinisheds)),
             lambda: wsclasses.ForumThread.reply(
-                wsutils.getidx(strings['prompts'][9],unfinisheds),headers,cookies),
+                wsutils.getidx(strings['prompts'][9],unfinisheds),headers,cookies, myname),
+            lambda: wsclasses.ForumThread.getmyanswer(
+                wsutils.getidx(strings['prompts'][10],unfinisheds)),
+            lambda: wsclasses.ForumThread.getreplies(
+                wsutils.getidx(strings['prompts'][11],unfinisheds)),
         ]
     )
-
 def coursemenu():
     # remove total row
     ovtbl = initoverviewtbl()
@@ -338,6 +377,8 @@ def coursemenu():
             strings['menus'][1],
             strings['menus'][2],
             strings['menus'][3],
+            strings['menus'][4],
+            strings['menus'][5],
         ],
         beforechoices=[
             lambda: initcoursetbls()[chosencourseidx].view()
@@ -350,7 +391,11 @@ def coursemenu():
             lambda: wsclasses.ForumThread.getcontent(
                 wsutils.getidx(strings['prompts'][2],threads)),
             lambda: wsclasses.ForumThread.reply(
-                wsutils.getidx(strings['prompts'][9],threads),headers,cookies),
+                wsutils.getidx(strings['prompts'][9],threads),headers,cookies,myname),
+            lambda: wsclasses.ForumThread.getmyanswer(
+                wsutils.getidx(strings['prompts'][10],threads)),
+            lambda: wsclasses.ForumThread.getreplies(
+                wsutils.getidx(strings['prompts'][11],threads)),
         ]
     )
 def allmenu():
@@ -360,6 +405,8 @@ def allmenu():
             strings['menus'][1],
             strings['menus'][2],
             strings['menus'][3],
+            strings['menus'][4],
+            strings['menus'][5],
         ],
         beforechoices=[
             lambda: initalltbl().view()
@@ -371,8 +418,12 @@ def allmenu():
                 wsutils.getidx(strings['prompts'][1],forum)),
             lambda: wsclasses.ForumThread.getcontent(
                 wsutils.getidx(strings['prompts'][2],forum)),
-                lambda: wsclasses.ForumThread.reply(
-                wsutils.getidx(strings['prompts'][9],forum),headers,cookies),
+            lambda: wsclasses.ForumThread.reply(
+                wsutils.getidx(strings['prompts'][9],forum),headers,cookies,myname),
+            lambda: wsclasses.ForumThread.getmyanswer(
+                wsutils.getidx(strings['prompts'][10],forum)),
+            lambda: wsclasses.ForumThread.getreplies(
+                wsutils.getidx(strings['prompts'][11],forum)),
         ]
     )
 
@@ -420,7 +471,7 @@ def getcoursenames():
     return coursenames
 def initalltbl():
     return wsprinter.Table(
-        ['No', 'Course', 'Class', 'Thread', 'Finished', 'Created at', 'Replies'],
+        ['No', 'Course', 'Class', 'Thread', 'Finished', 'Created at', 'Replies', 'File'],
         [
             [i+1 for i in range(len(forum))],
             [t.coursecaption for t in forum],
@@ -428,9 +479,10 @@ def initalltbl():
             [t.threadcaption for t in forum],
             ['Yes' if t.done else 'No' for t in forum],
             [datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").strftime("%d-%b-%Y") for t in forum],
-            [t.threadreplies for t in forum]
+            [t.threadreplies for t in forum],
+            ['Yes' if t.hasattachment else 'No' for t in forum],
         ],
-        "rrrlrrr",
+        "rrrlrrrr",
         forum
     )
 def initoverviewtbl():
@@ -482,26 +534,27 @@ def initcoursetbls():
                     unfinished += 1
         
         tbl = wsprinter.Table(
-                ['No', 'Class', 'Thread', 'Finished', 'Created at', 'Replies'],
+                ['No', 'Class', 'Thread', 'Finished', 'Created at', 'Replies', 'File'],
                 [
                     [i+1 for i in range(len(threads))],
                     [t.classcaption for t in threads],
                     [t.threadcaption for t in threads],
                     ['Yes' if t.done else 'No' for t in threads],
                     [datetime.datetime.strptime(t.threaddate[:10], "%Y-%m-%d").strftime("%d-%b-%Y") for t in threads],
-                    [t.threadreplies for t in threads]
+                    [t.threadreplies for t in threads],
+                    ['Yes' if t.hasattachment else 'No' for t in threads],
                 ],
-                "rrlrrr",
+                "rrlrrrr",
                 threads
         )
         # add header row
         tbl.addrow(0,
-            wsprinter.tblline([sum(i+2 for i in tbl.lenarr)+3])
+            wsprinter.tblline([sum(i+2 for i in tbl.lenarr)+4])
         )
         tbl.addrow(1,
             wsprinter.tblcontent(
                 [c],
-                [sum(i+2 for i in tbl.lenarr)+3],
+                [sum(i+2 for i in tbl.lenarr)+4],
                 "c"
             )
         )
@@ -512,7 +565,7 @@ def initcoursetbls():
                 [
                     tbl.clen(0,1,2),
                     tbl.clen(3),
-                    tbl.clen(4,5)
+                    tbl.clen(4,5,6)
                 ],
                 "rrr"
             )
@@ -522,7 +575,7 @@ def initcoursetbls():
                 [
                     tbl.clen(0,1,2),
                     tbl.clen(3),
-                    tbl.clen(4,5)
+                    tbl.clen(4,5,6)
                 ]
             )
         )
@@ -583,21 +636,39 @@ def help():
     print "more info about the program at https://kevindoubleu.github.io/projects/python/wfhsucks/index.html"
     print "any improvements are welcome at https://github.com/kevindoubleu/wfhsucks"
     wsutils.getchar()
-def faq(hold=None):
+def faq(hold=None, quick=None):
     print "FAQ"
     print "Q: why do you need my phpsessid ?"
     print "A: to get and acces into bimay, bimay needs your phpsessid to make sure ur a legit student"
+    print "A: the only other alternative is to ask for ur bimay password, which is worse"
     print ""
     print "Q: are you stealing my phpsessid ?"
     print "A: no, you can check all the requests made by this script with wireshark or something, or check the source code yourself"
     print ""
-    print "Q: I can't use my phpsessid ?"
-    print "A: bimay probably gave you a new phpsessid, refresh / relog and get the new phpsessid"
-    print ""
-    print "Q: loading new forum data doesn't do anything ?"
-    print "A: bimay probably gave you a new phpsessid, refresh / relog and get the new phpsessid"
+    if not quick:
+        print "Q: I can't use my phpsessid ?"
+        print "A: bimay probably gave you a new phpsessid, refresh / relog and get the new phpsessid"
+        print ""
+        print "Q: loading new forum data doesn't do anything ?"
+        print "A: bimay probably gave you a new phpsessid, refresh / relog and get the new phpsessid"
+        print ""
+        print "Q: I replied but I can't see my reply ?"
+        print "A: please do a 'full forum refresh' first"
+        print ""
+        print "Q: what's the difference between 'quick' and 'full' forum refresh ?"
+        print "A: a 'full' forum refresh will also download new student replies to forums u already finished, a 'quick' doesn't"
+        print "A: a 'quick' is enough if u just care about new forums"
+        print "A: a 'full' is good for checking your replies manually"
     if hold != False:
         wsutils.getchar()
+def whatsnew():
+    print "latest updates: "
+    print "- view my reply"
+    print "- view other student's replies"
+    print "- fix mobile posts preview (&nbsp; chars are now properly parsed)"
+    print "- there are now 2 choices on refreshing forum data (see FAQ)"
+    print "- now detects whether a thread has a file attached or not"
+    wsutils.getchar()
 
 def parseargs():
     if len(sys.argv) < 2:
@@ -605,7 +676,7 @@ def parseargs():
         print "    phpsessid : php session id from bimay, it's in your browser cookies"
         print "    academic_year : your current academic year"
         print "                    e.g. 1920, default is 2010 for b22 on 5th semester"
-        faq(False)
+        faq(hold=False, quick=True)
         exit()
 
     global acadyear, cookies
@@ -630,7 +701,7 @@ def main():
         try:
             print "[+] Hello there "+myname
             getforum()
-        except Exception:
+        except:
             traceback.print_exc()
             print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
             exit()
@@ -651,10 +722,11 @@ def main():
             "//Welcome " + myname,
             "//wfhsucks main menu",
             "//    Forum",
-            "        Check for new threads",
-            "        Print all unfinished threads (NEW!)",
-            "        Print threads from a course (NEW!)",
-            "        Print threads from all courses (NEW!)",
+            "        Quick forum refresh",
+            "        Full forum refresh",
+            "        Print all unfinished threads",
+            "        Print threads from a course",
+            "        Print threads from all courses",
             "        Batch finish/unfinish",
             "        Sort table",
             "//    Video conference (obsolete and no longer maintained, use https://myclass.apps.binus.ac.id instead)",
@@ -663,7 +735,8 @@ def main():
             "//    Others",
             "        Quick fix table printing issues",
             "        Quick info",
-            "        FAQ"
+            "        FAQ",
+            "        Latest update",
         ],
         beforechoices=[
             lambda: initmainmenutbl().view()    
@@ -674,6 +747,7 @@ def main():
         ],
         funcs=[
             lambda: getforum(),
+            lambda: getforum(fullrefresh=True),
             lambda: unfinishedmenu(),
             lambda: coursemenu(),
             lambda: allmenu(),
@@ -683,7 +757,8 @@ def main():
             lambda: vcmenu(),
             lambda: fixissues(),
             lambda: help(),
-            lambda: faq()
+            lambda: faq(),
+            lambda: whatsnew(),
         ]
     )
 

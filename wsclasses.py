@@ -5,7 +5,7 @@ import json
 class ForumThread(object):
     "blueprint for 1 forum entry"
 
-    def __init__(self, coursecode, coursecaption, courseid, classcaption, classid, threadcaption, threadid, threadreplies, threaddate, threadcontent, threadanswer):
+    def __init__(self, coursecode, coursecaption, courseid, classcaption, classid, threadcaption, threadid, threadreplies, threaddate, threadcontent, threadanswer, studentreplies, hasattachment):
         self.coursecode = coursecode
         self.coursecaption = coursecaption
         self.courseid = courseid
@@ -18,6 +18,8 @@ class ForumThread(object):
         self.threadcontent = threadcontent
         self.done = False
         self.threadanswer = threadanswer
+        self.studentreplies = studentreplies # this is an array containing arrays containing pre encoded text 
+        self.hasattachment = hasattachment
 
     def finish(self, hold=True):
         self.done = not self.done
@@ -39,15 +41,24 @@ class ForumThread(object):
         print "----- Content -----\n"
         wsutils.getchar()
     
-    def getanswer(self):
-        print "\n----- Answer -----"
-        print self.answer
-        print "----- Answer -----\n"
+    def getmyanswer(self):
+        if self.threadanswer:
+            print "\n----- Answer -----"
+            print self.threadanswer
+            print "----- Answer -----\n"
+        else:
+            print "[!] Your reply isn't found, maybe you haven't replied to this thread, if you have please 'full refresh' the forum data"
+        wsutils.getchar()
     
     def updatereplies(self, newreplies):
         self.threadreplies = newreplies
     
-    def reply(self, headers, cookies):
+    def reply(self, headers, cookies, myname):
+        """
+        reply to a thread
+        will never misinform about the reply status
+        because that comes from bimay and not generated here
+        """
         # get teacher's post id
         path = wfhsucks.forumpath+"getReply"
         payload = '{"threadid":"%s"}' % self.threadid
@@ -62,7 +73,7 @@ class ForumThread(object):
         print "Title: "+title
         print "Desc / Content: "+desc
         confirm = wsutils.simpleinput("Confirm? (y/n): ")
-        if confirm[0].lower() != 'y':
+        if confirm[0].lower() != 'y' or len(confirm) == 0:
             print "[!] Reply cancelled"
             wsutils.getchar()
             return
@@ -76,6 +87,19 @@ class ForumThread(object):
             self.threadanswer = desc
 
         wsutils.getchar()
+
+    def getreplies(self):
+        """
+        get replies from other students
+        """
+        for r in self.studentreplies:
+            print r[0]
+            print r[1]
+            print "\n"
+        wsutils.getchar();
+
+    def updatestudentreplies(self, newstudentreplies):
+        self.studentreplies = newstudentreplies
 
 class Vidconf(object):
     "blueprint for 1 vidconf meeting"
