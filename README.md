@@ -23,6 +23,8 @@ Starting to use this tool in the middle of a semester? That's alright, the scrip
 
 Want to reply to a forum fast but don't want to go into bimay? That's alright, you can reply directly from this script. The input is also simple, just pick the thread you want to reply, type in your reply title, type in your reply content, and there you go.
 
+Don't know what to reply? That's alright, you can look at other student's replies to get some ideas ;)
+
 ![](demo/demoreply.gif)
 
 Note that the reply feature is designed for short replies (for attendance), for multiline content, you'll have to replace "enter" with `<br />`, because "enter" is reserved for finishing the reply.
