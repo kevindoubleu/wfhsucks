@@ -95,6 +95,12 @@ def send(path, payload, headersncookies=None):
 
 def getforum(fullrefresh=None):
     global forum
+    global myname
+
+    if "offline" in myname:
+        print "[!] You are offline, please login to bimay and rerun this app"
+        wsutils.getchar()
+        return
 
     count = 0
     courses = getcourses()
@@ -685,13 +691,12 @@ def parseargs():
     cookies['PHPSESSID'] = str(sys.argv[1])
 def main():
     parseargs()
+    
     try:
         global myname
         myname = getmyname()
     except:
-        traceback.print_exc()
-        print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
-        exit()
+        myname = "to offline mode"
 
     try:
         global forum
