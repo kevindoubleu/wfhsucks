@@ -54,6 +54,9 @@ strings = {
         "Select thread to reply to: ",
         "Select thread to view my reply from: ",
         "Select thread to view all replies from: ",
+    ],
+    "errors": [
+        "Problem occurred, make sure you're logged in to bimay and the phpsessid is valid",
     ]
 }
 
@@ -73,10 +76,20 @@ def getmyname():
     return myname
 
 def send(path, payload, headersncookies=None):
+    global headers, cookies
     if headersncookies is not None:
-        r = requests.post(url+path, headers=headersncookies[0], cookies=headersncookies[1], data=payload, verify=True)
-    else:
-        r = requests.post(url+path, headers=headers, cookies=cookies, data=payload, verify=True)
+        headers = headersncookies[0]
+        cookies = headersncookies[1]
+
+    retries = 1
+    while True:
+        try:
+            r = requests.post(url+path, headers=headers, cookies=cookies, data=payload, verify=True)
+            break
+        except:
+            sys.stdout.write("[ ] Retrying connection {0}x\r".format(retries))
+            sys.stdout.flush()
+            retries += 1
 
     if r.status_code != 200:
         print "[!] Error HTTP "+str(r.status_code)
@@ -84,6 +97,7 @@ def send(path, payload, headersncookies=None):
         print path
         print payload
         if r.status_code == 500:
+            traceback.print_exc()
             print "[*] It's an HTTP 500 error, bimay's acting up, pls try again later"
         exit()
 
@@ -159,26 +173,46 @@ def getcourses():
 def getclasses(course):
     path = forumpath+"getClass"
     payload = '{"acadCareer":"RS1","period":"%s","course":"%s","Institution":"BNS01"}' % (acadyear, course['ID'])
-    classes = send(path, payload)['rows']
+    retries = 1
+    while True:
+        try:
+            classes = send(path, payload)['rows']
+            break
+        except:
+            sys.stdout.write("[ ] Retrying getting classes {0}x\r".format(retries))
+            sys.stdout.flush()
     classes = json.loads(classes)
 
     return classes
 def getthreads(course, kelas):
     path = forumpath+"getThread"
     payload = '{"forumtypeid":1,"acadCareer":"RS1","period":"%s","course":"%s","classid":"%s","topic":"","Institution":"BNS01","SESSIONIDNUM":""}' % (acadyear, course['ID'], kelas['ID'])
-    result = send(path, payload)
-    if result['status'] == "success":
-        threads = result['rows']
-        threads = json.loads(threads)
-        return threads
-    else:
-        return []
+    retries = 1
+    while True:
+        try:
+            result = send(path, payload)
+            if result['status'] == "success":
+                threads = result['rows']
+                threads = json.loads(threads)
+                return threads
+            else:
+                return []
+        except:
+            sys.stdout.write("[ ] Retrying getting threads {0}x\r".format(retries))
+            sys.stdout.flush()
 def getthreaddetails(thread):
     path = forumpath+"getReply"
     payload = '{"threadid":"%s"}' % thread['ID']
-    replies = send(path, payload)['rows']
+    retries = 1
+    while True:
+        try:
+            replies = send(path, payload)['rows']
+            break
+        except:
+            sys.stdout.write("[ ] Retrying getting details {0}x\r".format(retries))
+            sys.stdout.flush()
+            retries += 1
     replies = json.loads(replies)
-
     postdate = replies[0]['PostDate']
 
     content = replies[0]['Name']+"\n\n"+replies[0]['PostContent']
@@ -606,14 +640,6 @@ def initvctbl():
 def initmainmenutbl():
     return initoverviewtbl()
 
-def justinput(prompt):
-    while True:
-        try:
-            return input(prompt)
-        except KeyboardInterrupt:
-            exit()
-        except:
-            break
 def fixissues():
     fixes = 0
     for t in forum:
@@ -702,25 +728,31 @@ def main():
         global forum
         forum = loadp("forum%s.data" % acadyear)
     except:
+        # if offline mode in first time run, exit
+        if myname == "to offline mode":
+            print("[!] {0}".format(strings['errors'][0]))
+            exit()
         print "[+] Initiating forum data, first time run only"
         try:
             print "[+] Hello there "+myname
             getforum()
         except:
             traceback.print_exc()
-            print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
+            print("[!] {0}".format(strings['errors'][0]))
             exit()
-    try:
-        global vidconfs
-        vidconfs = loadp("vidconf%s.data" % acadyear)
-    except:
-        print "[+] Initiating vidconf data (needs forum data), first time run only"
-        try:
-            getvidconfs()
-        except:
-            traceback.print_exc()
-            print "[!] Problem occurred, make sure you're logged in to bimay and the phpsessid is valid"
-            exit()
+            
+    # problematic, will remove soon
+    # try:
+    #     global vidconfs
+    #     vidconfs = loadp("vidconf%s.data" % acadyear)
+    # except:
+    #     print "[+] Initiating vidconf data (needs forum data), first time run only"
+    #     try:
+    #         getvidconfs()
+    #     except:
+    #         traceback.print_exc()
+    #         print("[!] {0}".format(strings['errors'][0]))
+    #         exit()
     
     wsmenu.menu(
         [
