@@ -85,21 +85,25 @@ def send(path, payload, headersncookies=None):
     while True:
         try:
             r = requests.post(url+path, headers=headers, cookies=cookies, data=payload, verify=True)
+            if r.status_code != 200:
+                errors = 0
+                print "[!] Error HTTP "+str(r.status_code)
+                sys.stdout.write("[ ] Retrying due to HTTP {1}, {0}x\r".format(retries, r.status_code))
+                sys.stdout.flush()
+                errors += 1
+                if errors == 10:
+                    print payload
+                    print path
+                    print r.text
+                    if r.status_code == 500:
+                        traceback.print_exc()
+                        print "[*] It's an HTTP 500 error, bimay's acting up, pls try again later"
+                    exit()
             break
         except:
             sys.stdout.write("[ ] Retrying connection {0}x\r".format(retries))
             sys.stdout.flush()
             retries += 1
-
-    if r.status_code != 200:
-        print "[!] Error HTTP "+str(r.status_code)
-        print r.text
-        print path
-        print payload
-        if r.status_code == 500:
-            traceback.print_exc()
-            print "[*] It's an HTTP 500 error, bimay's acting up, pls try again later"
-        exit()
 
     try:
         jdata = r.json()
@@ -213,6 +217,7 @@ def getthreaddetails(thread):
             sys.stdout.flush()
             retries += 1
     replies = json.loads(replies)
+
     postdate = replies[0]['PostDate']
 
     content = replies[0]['Name']+"\n\n"+replies[0]['PostContent']
@@ -237,6 +242,7 @@ def getthreaddetails(thread):
         curcontent = r['PostContent']
         curcontent = re.sub('<[^<]+?>', '', curcontent)
         curcontent = re.sub('&nbsp;', ' ', curcontent)
+        curcontent = re.sub('[\r\n]+', '\n', curcontent)
         curreply.append(curcontent.encode("utf-8"))
 
         studentreplies.append(curreply)
@@ -740,7 +746,7 @@ def main():
             traceback.print_exc()
             print("[!] {0}".format(strings['errors'][0]))
             exit()
-            
+
     # problematic, will remove soon
     # try:
     #     global vidconfs

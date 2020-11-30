@@ -83,8 +83,7 @@ class ForumThread(object):
 
         if self.done == False:
             self.finish(hold=False)
-        if len(self.threadanswer) == 0:
-            self.threadanswer = desc
+        print("[*] Please do a full forum refresh to view your reply")
 
         wsutils.getchar()
 
@@ -96,7 +95,7 @@ class ForumThread(object):
             print r[0]
             print r[1]
             print "\n"
-        wsutils.getchar();
+        wsutils.getchar()
 
     def updatestudentreplies(self, newstudentreplies):
         self.studentreplies = newstudentreplies
